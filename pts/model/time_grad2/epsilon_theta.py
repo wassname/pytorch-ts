@@ -80,7 +80,7 @@ class CondUpsampler(nn.Module):
         return x
 
 
-class EpsilonTheta(nn.Module):
+class EpsilonTheta2(nn.Module):
     def __init__(
         self,
         target_dim,

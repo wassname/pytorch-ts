@@ -7,12 +7,13 @@ import torch.nn as nn
 from gluonts.core.component import validated
 
 from pts.model import weighted_average
-from pts.modules import GaussianDiffusion, DiffusionOutput, MeanScaler, NOPScaler
+from pts.modules import DiffusionOutput, MeanScaler, NOPScaler
+from .gaussian_diffusion_ou import GaussianDiffusionOU
 
-from .epsilon_theta import EpsilonTheta
+from .epsilon_theta import EpsilonTheta2
 
 
-class TimeGradTrainingNetwork(nn.Module):
+class TimeGradTrainingNetwork2(nn.Module):
     @validated()
     def __init__(
         self,
@@ -60,7 +61,7 @@ class TimeGradTrainingNetwork(nn.Module):
             batch_first=True,
         )
 
-        self.denoise_fn = EpsilonTheta(
+        self.denoise_fn = EpsilonTheta2(
             target_dim=target_dim,
             cond_length=conditioning_length,
             residual_layers=residual_layers,
@@ -68,7 +69,7 @@ class TimeGradTrainingNetwork(nn.Module):
             dilation_cycle_length=dilation_cycle_length,
         )
 
-        self.diffusion = GaussianDiffusion(
+        self.diffusion = GaussianDiffusionOU(
             self.denoise_fn,
             input_size=target_dim,
             diff_steps=diff_steps,
@@ -434,7 +435,7 @@ class TimeGradTrainingNetwork(nn.Module):
         return (loss.mean(), likelihoods, distr_args)
 
 
-class TimeGradPredictionNetwork(TimeGradTrainingNetwork):
+class TimeGradPredictionNetwork2(TimeGradTrainingNetwork2):
     def __init__(self, num_parallel_samples: int, **kwargs) -> None:
         super().__init__(**kwargs)
         self.num_parallel_samples = num_parallel_samples

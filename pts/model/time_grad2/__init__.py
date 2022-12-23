@@ -1,3 +1,3 @@
-from .time_grad_estimator import TimeGradEstimator
-from .time_grad_network import TimeGradTrainingNetwork, TimeGradPredictionNetwork
-from .epsilon_theta import EpsilonTheta
+from .time_grad_estimator import TimeGradEstimator2
+from .time_grad_network import TimeGradTrainingNetwork2, TimeGradPredictionNetwork2
+from .epsilon_theta import EpsilonTheta2

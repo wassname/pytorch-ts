@@ -32,10 +32,10 @@ from pts.feature import (
 from pts.model import PyTorchEstimator
 from pts.model.utils import get_module_forward_input_names
 
-from .time_grad_network import TimeGradTrainingNetwork, TimeGradPredictionNetwork
+from .time_grad_network import TimeGradTrainingNetwork2, TimeGradPredictionNetwork2
 
 
-class TimeGradEstimator(PyTorchEstimator):
+class TimeGradEstimator2(PyTorchEstimator):
     def __init__(
         self,
         input_size: int,
@@ -186,8 +186,8 @@ class TimeGradEstimator(PyTorchEstimator):
             )
         )
 
-    def create_training_network(self, device: torch.device) -> TimeGradTrainingNetwork:
-        return TimeGradTrainingNetwork(
+    def create_training_network(self, device: torch.device) -> TimeGradTrainingNetwork2:
+        return TimeGradTrainingNetwork2(
             input_size=self.input_size,
             target_dim=self.target_dim,
             num_layers=self.num_layers,
@@ -214,10 +214,10 @@ class TimeGradEstimator(PyTorchEstimator):
     def create_predictor(
         self,
         transformation: Transformation,
-        trained_network: TimeGradTrainingNetwork,
+        trained_network: TimeGradTrainingNetwork2,
         device: torch.device,
     ) -> Predictor:
-        prediction_network = TimeGradPredictionNetwork(
+        prediction_network = TimeGradPredictionNetwork2(
             input_size=self.input_size,
             target_dim=self.target_dim,
             num_layers=self.num_layers,
