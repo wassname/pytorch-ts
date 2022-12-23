@@ -44,7 +44,7 @@ class ResidualBlock(nn.Module):
         )
         self.diffusion_projection = nn.Linear(t_in, residual_channels)
         self.conditioner_projection = nn.Conv1d(
-            cond_in, 2 * residual_channels, 1 #3, padding_mode="circular",
+            cond_in, 2 * residual_channels, 1, padding=2, padding_mode="circular",
         )
         self.output_projection = nn.Conv1d(residual_channels, 2 * residual_channels, 1)
 
@@ -94,7 +94,7 @@ class EpsilonTheta2(nn.Module):
     ):
         super().__init__()
         self.input_projection = nn.Conv1d(
-            target_dim, residual_channels, 1#, padding=2, padding_mode="circular"
+            target_dim, residual_channels, 1, padding=2, padding_mode="circular"
         )
         self.diffusion_embedding = DiffusionEmbedding(
             time_emb_dim, proj_dim=residual_hidden
@@ -116,12 +116,18 @@ class EpsilonTheta2(nn.Module):
                 for i in range(residual_layers)
             ]
         )
-        self.skip_projection = nn.Conv1d(residual_channels, residual_channels, 1)
-        self.output_projection = nn.Conv1d(residual_channels, target_dim, 1)
+        self.skip_projection = nn.Conv1d(residual_channels, residual_channels, 3)
+        # self.output_projection = nn.Conv1d(residual_channels, target_dim, 3)
 
         nn.init.kaiming_normal_(self.input_projection.weight)
         nn.init.kaiming_normal_(self.skip_projection.weight)
-        nn.init.zeros_(self.output_projection.weight)
+        # nn.init.zeros_(self.output_projection.weight)
+        
+        self.output_projection = nn.Sequential(
+            nn.Conv1d(residual_channels, residual_channels, 3),
+            # nn.LeakyReLU(),
+            # nn.Conv1d(residual_channels, target_dim, 3, padding="same"),
+        )
 
     def forward(self, inputs, time, cond):
         x = self.input_projection(inputs)
