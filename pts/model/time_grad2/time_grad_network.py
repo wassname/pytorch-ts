@@ -482,7 +482,7 @@ class TimeGradPredictionNetwork2(TimeGradTrainingNetwork2):
 
         repeated_scale = repeat(scale)
         if self.scaling:
-            self.diffusion.scale = repeated_scale
+            self.diffusion.scale = repeated_scale.permute(0, 2, 1)[:1]
             
         future_samples = []
         for _ in range(self.num_parallel_samples):
