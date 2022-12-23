@@ -31,8 +31,9 @@ class DiffusionEmbedding(nn.Module):
 
 
 class ResidualBlock(nn.Module):
-    def __init__(self, hidden_size, residual_channels, dilation):
+    def __init__(self, x_in, t_in, cond_in, dilation):
         super().__init__()
+        residual_channels = x_in
         self.dilated_conv = nn.Conv1d(
             residual_channels,
             2 * residual_channels,
@@ -41,9 +42,9 @@ class ResidualBlock(nn.Module):
             dilation=dilation,
             padding_mode="circular",
         )
-        self.diffusion_projection = nn.Linear(hidden_size, residual_channels)
+        self.diffusion_projection = nn.Linear(t_in, residual_channels)
         self.conditioner_projection = nn.Conv1d(
-            1, 2 * residual_channels, 1, padding=2, padding_mode="circular"
+            cond_in, 2 * residual_channels, 1 #3, padding_mode="circular",
         )
         self.output_projection = nn.Conv1d(residual_channels, 2 * residual_channels, 1)
 
@@ -69,13 +70,13 @@ class ResidualBlock(nn.Module):
 class CondUpsampler(nn.Module):
     def __init__(self, cond_length, target_dim):
         super().__init__()
-        self.linear1 = nn.Linear(cond_length, target_dim // 2)
-        self.linear2 = nn.Linear(target_dim // 2, target_dim)
+        self.conv1 = nn.Conv1d(cond_length, target_dim // 2, 1)
+        self.conv2 = nn.Conv1d(target_dim // 2, target_dim, 1)
 
     def forward(self, x):
-        x = self.linear1(x)
+        x = self.conv1(x)
         x = F.leaky_relu(x, 0.4)
-        x = self.linear2(x)
+        x = self.conv2(x)
         x = F.leaky_relu(x, 0.4)
         return x
 
@@ -93,26 +94,30 @@ class EpsilonTheta2(nn.Module):
     ):
         super().__init__()
         self.input_projection = nn.Conv1d(
-            1, residual_channels, 1, padding=2, padding_mode="circular"
+            target_dim, residual_channels, 1#, padding=2, padding_mode="circular"
         )
         self.diffusion_embedding = DiffusionEmbedding(
             time_emb_dim, proj_dim=residual_hidden
         )
+        # self.cond_upsampler = nn.Conv1d(cond_length, width*3, 1)
         self.cond_upsampler = CondUpsampler(
             target_dim=target_dim, cond_length=cond_length
         )
         self.residual_layers = nn.ModuleList(
             [
                 ResidualBlock(
-                    residual_channels=residual_channels,
+                    x_in=residual_channels,
+                    t_in=residual_hidden,
+                    cond_in=target_dim,
+                    # residual_channels=residual_channels,
                     dilation=2 ** (i % dilation_cycle_length),
-                    hidden_size=residual_hidden,
+                    # hidden_size=residual_hidden,
                 )
                 for i in range(residual_layers)
             ]
         )
-        self.skip_projection = nn.Conv1d(residual_channels, residual_channels, 3)
-        self.output_projection = nn.Conv1d(residual_channels, 1, 3)
+        self.skip_projection = nn.Conv1d(residual_channels, residual_channels, 1)
+        self.output_projection = nn.Conv1d(residual_channels, target_dim, 1)
 
         nn.init.kaiming_normal_(self.input_projection.weight)
         nn.init.kaiming_normal_(self.skip_projection.weight)

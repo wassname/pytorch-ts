@@ -104,7 +104,7 @@ class PyTorchEstimator(Estimator):
 
         input_names = get_module_forward_input_names(trained_net)
 
-        with env._let(max_idle_transforms=maybe_len(training_data) or 0):
+        with env._let(max_idle_transforms=10):
             training_instance_splitter = self.create_instance_splitter("training")
         training_iter_dataset = TransformedIterableDataset(
             dataset=training_data,

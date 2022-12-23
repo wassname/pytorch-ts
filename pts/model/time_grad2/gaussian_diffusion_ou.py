@@ -53,12 +53,8 @@ def mk_noise(shape, device):
     noise_ou = noise_ou[:, None]
     return C, noise_rand, noise_ou
 
-def noise_like(shape, device, repeat=False):
-    repeat_noise = lambda: torch.randn((1, *shape[1:]), device=device).repeat(
-        shape[0], *((1,) * (len(shape) - 1))
-    )
-    noise = lambda: torch.randn(shape, device=device)
-    return repeat_noise() if repeat else noise()
+def noise_like(x):    
+    return mk_noise(x.shape, x.device)
 
 
 def cosine_beta_schedule(timesteps, s=0.008):
@@ -298,7 +294,7 @@ class GaussianDiffusionOU(nn.Module):
 
         B, T, _ = x.shape
 
-        time = torch.randint(0, self.num_timesteps, (B * T,), device=x.device).long()
+        time = torch.randint(0, self.num_timesteps, (B,), device=x.device).long()
         loss = self.p_losses(
             x, cond, time, *args, **kwargs
         )

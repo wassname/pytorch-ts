@@ -3,7 +3,6 @@ from typing import List, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
-
 from gluonts.core.component import validated
 
 from pts.model import weighted_average
@@ -62,6 +61,7 @@ class TimeGradTrainingNetwork2(nn.Module):
         )
 
         self.denoise_fn = EpsilonTheta2(
+            # input_size=input_size,
             target_dim=target_dim,
             cond_length=conditioning_length,
             residual_layers=residual_layers,
@@ -402,7 +402,8 @@ class TimeGradTrainingNetwork2(nn.Module):
 
         # we sum the last axis to have the same shape for all likelihoods
         # (batch_size, subseq_length, 1)
-
+        target = target.permute(0, 2, 1)
+        distr_args = distr_args.permute(0, 2, 1)
         likelihoods = self.diffusion.log_prob(target, distr_args).unsqueeze(-1)
 
         # assert_shape(likelihoods, (-1, seq_len, 1))
