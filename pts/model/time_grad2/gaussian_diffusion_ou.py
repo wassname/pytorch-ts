@@ -44,13 +44,18 @@ def get_ou(shape, mu=0, theta=0.1, sigma=.1):
     return OrnsteinUhlenbeckProcess(shape, mu=mu, theta=theta, sigma=sigma)
 
 def mk_noise(shape, device):
+    repeats = shape[1]
     shape = (shape[0], shape[2])
-    ou = get_ou(shape)
-    b = ou.sample()
-    b = [torch.from_numpy(bb).to(device).float() for bb in b]
-    C, noise_rand, noise_ou = b
-    noise_rand = noise_rand[:, None]
-    noise_ou = noise_ou[:, None]
+    ns = []
+    for _ in range(repeats):
+        ou = get_ou(shape)
+        b = ou.sample()
+        b = [torch.from_numpy(bb).to(device).float() for bb in b]
+        C, noise_rand, noise_ou = b
+        noise_rand = noise_rand[:, None]
+        noise_ou = noise_ou[:, None]
+        ns.append((C, noise_rand, noise_ou))
+    C, noise_rand, noise_ou = [torch.concat(n, 1) for n in zip(*ns)]
     return C, noise_rand, noise_ou
 
 def noise_like(x):    
@@ -222,7 +227,7 @@ class GaussianDiffusionOU(nn.Module):
         device = self.betas.device
 
         b = shape[0]
-        img = torch.randn(shape, device=device)
+        C, noise_rand, img = mk_noise(shape, device=device)
 
         for i in reversed(range(0, self.num_timesteps)):
             img = self.p_sample(
@@ -236,10 +241,10 @@ class GaussianDiffusionOU(nn.Module):
             shape = cond.shape[:-1] + (self.input_size,)
             # TODO reshape cond to (B*T, 1, -1)
             B, T, pred_len = cond.shape
-            shape = (B, 1, pred_len)
+            shape = (B, self.input_size, pred_len)
         else:
             shape = sample_shape
-        x_hat = self.p_sample_loop(shape, cond)  # TODO reshape x_hat to (B,T,-1)
+        x_hat = self.p_sample_loop(shape, cond)
 
         if self.scale is not None:
             x_hat *= self.scale
@@ -263,8 +268,8 @@ class GaussianDiffusionOU(nn.Module):
 
         return img
 
-    def q_sample(self, x_start, t, noise=None):
-        noise = default(noise, lambda: noise_like(x_start)[2])
+    def q_sample(self, x_start, t, noise):
+        # noise = default(noise, lambda: noise_like(x_start)[2])
 
         return (
             extract(self.sqrt_alphas_cumprod, t, x_start.shape) * x_start

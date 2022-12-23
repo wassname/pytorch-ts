@@ -255,19 +255,19 @@ class TimeGradTrainingNetwork2(nn.Module):
             past_observed_values, 1 - past_is_pad.unsqueeze(-1)
         )
 
-        if future_time_feat is None or future_target_cdf is None:
-            time_feat = past_time_feat[:, -self.context_length :, ...]
-            sequence = past_target_cdf
-            sequence_length = self.history_length
-            subsequences_length = self.context_length
-        else:
-            time_feat = torch.cat(
-                (past_time_feat[:, -self.context_length :, ...], future_time_feat),
-                dim=1,
-            )
-            sequence = torch.cat((past_target_cdf, future_target_cdf), dim=1)
-            sequence_length = self.history_length + self.prediction_length
-            subsequences_length = self.context_length + self.prediction_length
+        # if future_time_feat is None or future_target_cdf is None:
+        time_feat = past_time_feat[:, -self.context_length:, ...]
+        sequence = past_target_cdf
+        sequence_length = self.history_length
+        subsequences_length = self.context_length
+        # else:
+        #     time_feat = torch.cat(
+        #         (past_time_feat[:, -self.context_length :, ...], future_time_feat),
+        #         dim=1,
+        #     )
+        #     sequence = torch.cat((past_target_cdf, future_target_cdf), dim=1)
+        #     sequence_length = self.history_length + self.prediction_length
+        #     subsequences_length = self.context_length + self.prediction_length
 
         # (batch_size, sub_seq_len, target_dim, num_lags)
         lags = self.get_lagged_subsequences(
@@ -389,16 +389,17 @@ class TimeGradTrainingNetwork2(nn.Module):
 
         # put together target sequence
         # (batch_size, seq_len, target_dim)
-        target = torch.cat(
-            (past_target_cdf[:, -self.context_length :, ...], future_target_cdf),
-            dim=1,
-        )
+        # target = torch.cat(
+        #     (past_target_cdf[:, -self.context_length :, ...], future_target_cdf),
+        #     dim=1,
+        # )
+        target = future_target_cdf
 
         # assert_shape(target, (-1, seq_len, self.target_dim))
 
         distr_args = self.distr_args(rnn_outputs=rnn_outputs)
         if self.scaling:
-            self.diffusion.scale = scale
+            self.diffusion.scale = scale.permute(0, 2, 1)
 
         # we sum the last axis to have the same shape for all likelihoods
         # (batch_size, subseq_length, 1)
@@ -448,11 +449,8 @@ class TimeGradPredictionNetwork2(TimeGradTrainingNetwork2):
 
     def sampling_decoder(
         self,
-        past_target_cdf: torch.Tensor,
-        target_dimension_indicator: torch.Tensor,
-        time_feat: torch.Tensor,
         scale: torch.Tensor,
-        begin_states: Union[List[torch.Tensor], torch.Tensor],
+        rnn_outputs: Union[List[torch.Tensor], torch.Tensor],
     ) -> torch.Tensor:
         """
         Computes sample paths by unrolling the RNN starting with a initial
@@ -470,8 +468,8 @@ class TimeGradPredictionNetwork2(TimeGradTrainingNetwork2):
             num_features)
         scale
             Mean scale for each time series (batch_size, 1, target_dim)
-        begin_states
-            List of initial states for the RNN layers (batch_size, num_cells)
+        rnn_outputs
+            Outputs of the unrolled RNN (batch_size, seq_len, num_cells)
         Returns
         --------
         sample_paths : Tensor
@@ -482,56 +480,35 @@ class TimeGradPredictionNetwork2(TimeGradTrainingNetwork2):
         def repeat(tensor, dim=0):
             return tensor.repeat_interleave(repeats=self.num_parallel_samples, dim=dim)
 
-        # blows-up the dimension of each tensor to
-        # batch_size * self.num_sample_paths for increasing parallelism
-        repeated_past_target_cdf = repeat(past_target_cdf)
-        repeated_time_feat = repeat(time_feat)
         repeated_scale = repeat(scale)
         if self.scaling:
             self.diffusion.scale = repeated_scale
-        repeated_target_dimension_indicator = repeat(target_dimension_indicator)
-
-        if self.cell_type == "LSTM":
-            repeated_states = [repeat(s, dim=1) for s in begin_states]
-        else:
-            repeated_states = repeat(begin_states, dim=1)
-
+            
         future_samples = []
-
-        # for each future time-units we draw new samples for this time-unit
-        # and update the state
-        for k in range(self.prediction_length):
-            lags = self.get_lagged_subsequences(
-                sequence=repeated_past_target_cdf,
-                sequence_length=self.history_length + k,
-                indices=self.shifted_lags,
-                subsequences_length=1,
-            )
-
-            rnn_outputs, repeated_states, _, _ = self.unroll(
-                begin_state=repeated_states,
-                lags=lags,
-                scale=repeated_scale,
-                time_feat=repeated_time_feat[:, k : k + 1, ...],
-                target_dimension_indicator=repeated_target_dimension_indicator,
-                unroll_length=1,
-            )
-
+        for _ in range(self.num_parallel_samples):
             distr_args = self.distr_args(rnn_outputs=rnn_outputs)
-
             # (batch_size, 1, target_dim)
-            new_samples = self.diffusion.sample(cond=distr_args)
+            distr_args = distr_args.permute(0, 2, 1)
+            samples = self.diffusion.sample(cond=distr_args)
+            future_samples.append(samples)
+        # import pdb; pdb.set_trace()
+        # rnn_outputs = torch.Size([7, 24, 40])
+        # torch.Size([7, 100, 370, 24])
+        # torch.Size([7, 370, 24])
+        samples = torch.stack(future_samples, dim=1).permute(0, 1, 3, 2)
 
-            # (batch_size, seq_len, target_dim)
-            future_samples.append(new_samples)
-            repeated_past_target_cdf = torch.cat(
-                (repeated_past_target_cdf, new_samples), dim=1
-            )
+        # # (batch_size, seq_len, target_dim)
+        # future_samples.append(new_samples)
+        # repeated_past_target_cdf = torch.cat(
+        #     (repeated_past_target_cdf, new_samples), dim=1
+        # )
 
         # (batch_size * num_samples, prediction_length, target_dim)
-        samples = torch.cat(future_samples, dim=1)
+        # samples = torch.cat(future_samples, dim=1)
 
         # (batch_size, num_samples, prediction_length, target_dim)
+        # print('samples.shape', samples.shape)
+        return samples
         return samples.reshape(
             (
                 -1,
@@ -586,21 +563,20 @@ class TimeGradPredictionNetwork2(TimeGradTrainingNetwork2):
             past_observed_values, 1 - past_is_pad.unsqueeze(-1)
         )
 
-        # unroll the decoder in "prediction mode", i.e. with past data only
-        _, begin_states, scale, _, _ = self.unroll_encoder(
+        
+        # unroll the decoder in "training mode", i.e. by providing future data
+        # as well
+        rnn_outputs, _, scale, _, _ = self.unroll_encoder(
             past_time_feat=past_time_feat,
             past_target_cdf=past_target_cdf,
             past_observed_values=past_observed_values,
             past_is_pad=past_is_pad,
-            future_time_feat=None,
+            future_time_feat=future_time_feat,
             future_target_cdf=None,
             target_dimension_indicator=target_dimension_indicator,
         )
 
         return self.sampling_decoder(
-            past_target_cdf=past_target_cdf,
-            target_dimension_indicator=target_dimension_indicator,
-            time_feat=future_time_feat,
             scale=scale,
-            begin_states=begin_states,
+            rnn_outputs=rnn_outputs,
         )

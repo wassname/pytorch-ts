@@ -124,7 +124,7 @@ class EpsilonTheta2(nn.Module):
         # nn.init.zeros_(self.output_projection.weight)
         
         self.output_projection = nn.Sequential(
-            nn.Conv1d(residual_channels, residual_channels, 3),
+            nn.Conv1d(residual_channels, target_dim, 3),
             # nn.LeakyReLU(),
             # nn.Conv1d(residual_channels, target_dim, 3, padding="same"),
         )
